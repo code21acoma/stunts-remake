@@ -1,0 +1,10 @@
+# místní nastavení Claude Code / editoru
+.claude/
+.vscode/
+# Python (tools/server.py)
+__pycache__/
+*.pyc
+# systémové soubory
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stunts Remake</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Exo+2:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" id="mainCss" href="css/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="loading" class="screen show"><div class="logo">STUNTS<span>remake</span></div><div class="spinner"></div><p>Stavím tratě…</p></div>
+
+<!-- hlavní menu -->
+<div id="menu" class="screen">
+  <div class="logo big">STUNTS<span>remake</span></div>
+  <p class="tag">Kaskadérské závody na tratích, které si sami postavíte.</p>
+  <div class="menu-buttons">
+    <button class="btn primary" data-go="select">🏁 Sólo závod</button>
+    <button class="btn primary" data-go="duel">👥 Závod pro dva</button>
+    <button class="btn" data-go="editor">🛠 Editor tratí</button>
+    <button class="btn" data-go="help">🎮 Ovládání</button>
+  </div>
+  <p class="foot">Inspirováno klasikou <em>Stunts</em> (Distinctive Software, 1990).</p>
+</div>
+
+<!-- výběr trati a auta -->
+<div id="select" class="screen panelscreen">
+  <div class="panel wide">
+    <!-- krok 1: auto -->
+    <div id="stepCar">
+      <div class="steps" id="stepsCar"><b class="on">1. Auto</b><span>›</span><b>2. Trať</b></div>
+      <h2 id="carTitle">Vyber auto</h2>
+      <div class="row colors" id="colorRow"></div>
+      <div id="carList" class="cards cars"></div>
+      <div class="row between">
+        <span class="muted">Každé auto má jiné vlastnosti – pomalá auta lépe drží v zatáčkách.</span>
+        <div class="row">
+          <button class="btn" id="carBackBtn">Zpět</button>
+          <button class="btn primary" id="nextBtn">Dále – výběr trati ▶</button>
+        </div>
+      </div>
+    </div>
+    <!-- krok 2: trať -->
+    <div id="stepTrack" class="hidden">
+      <div class="steps"><b>1. Auto</b><span>›</span><b class="on">2. Trať</b></div>
+      <div class="row between tophead">
+        <h2>Vyber trať <small id="carChosen" class="muted"></small></h2>
+        <div class="seg" id="diffSeg"><button data-d="0">Vše</button><button data-d="1">★</button><button data-d="2">★★</button><button data-d="3">★★★</button><button data-d="4">★★★★</button><button data-d="5">Jen vlastní</button></div>
+      </div>
+      <div id="trackList" class="cards tracks"></div>
+      <div class="row between">
+        <div class="row">
+          <span class="lbl">Počet kol:</span>
+          <div class="seg" id="lapsSeg"><button data-l="1">1</button><button data-l="2">2</button><button data-l="3">3</button></div>
+          <span class="lbl" title="7 počítačových jezdců – každý jiným autem a vyniká v něčem jiném; stojí na startu před tebou.">Soupeři:</span>
+          <div class="seg" id="oppSeg"><button data-o="0">Ne</button><button data-o="1">Lehcí</button><button data-o="2">Střední</button><button data-o="3">Těžcí</button><button data-o="4">Mistři</button></div>
+          <label class="chk" id="ghostLbl"><input type="checkbox" id="ghostChk" checked> Duch nejlepší jízdy</label>
+        </div>
+        <div class="row">
+          <button class="btn" id="backCarBtn">◀ Změnit auto</button>
+          <button class="btn primary" id="startBtn">Start ▶</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- nápověda -->
+<div id="help" class="screen panelscreen">
+  <div class="panel">
+    <h2>Ovládání</h2>
+    <table class="keys">
+      <tr><td><kbd>↑</kbd> / <kbd>W</kbd></td><td>plyn</td></tr>
+      <tr><td><kbd>↓</kbd> / <kbd>S</kbd></td><td>brzda, zpátečka</td></tr>
+      <tr><td><kbd>←</kbd><kbd>→</kbd> / <kbd>A</kbd><kbd>D</kbd></td><td>zatáčení (ve vzduchu náklon)</td></tr>
+      <tr><td><kbd>Mezerník</kbd></td><td>ruční brzda (smyk)</td></tr>
+      <tr><td><kbd>C</kbd></td><td>přepnout kameru (za autem, vzdálená, kapota, kokpit, TV)</td></tr>
+      <tr><td><kbd>R</kbd></td><td>návrat na trať (posl. kontrolní bod)</td></tr>
+      <tr><td>Zkratky</td><td>vynechat lze nejvýš 1 dílek; při větší zkratce se objeví šipka zpět ke kontrolnímu bodu</td></tr>
+      <tr><td><kbd>Esc</kbd> / <kbd>P</kbd></td><td>pauza</td></tr>
+      <tr><td><kbd>M</kbd></td><td>zvuk zap/vyp</td></tr>
+      <tr><td><kbd>N</kbd></td><td>hudba v menu zap/vyp (vlastní retro skladba)</td></tr>
+      <tr><td>Ovladač PS5 DualSense<br><small class="muted">(i jiné, USB/Bluetooth; Chrome/Edge)</small></td><td>levá páčka / D-pad = řízení · <b>R2</b> plyn · <b>L2</b> brzda, zpátečka · <b>✕</b> ruční brzda · <b>△</b> kamera · <b>○</b> návrat na trať · <b>Options</b> pauza · vibrace při nárazech<br>menu: D-pad / páčka = výběr, ✕ = potvrdit, ○ = zpět · záznam: ✕ přehrát/zastavit, △ kamera, ○ konec<br>hra pro dva: druhý připojený ovladač = hráč 2</td></tr>
+    </table>
+    <h3>Závod pro dva (rozdělená obrazovka)</h3>
+    <table class="keys">
+      <tr><td><b style="color:#d81f26">Hráč 1</b> (vlevo, červený)</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> jízda · <kbd>Mezerník</kbd> ruční brzda · <kbd>C</kbd> kamera · <kbd>R</kbd> návrat na trať</td></tr>
+      <tr><td><b style="color:#1f5fd8">Hráč 2</b> (vpravo, modrý)</td><td>šipky jízda · <kbd>pravý Ctrl</kbd> ruční brzda · <kbd>pravý Shift</kbd> kamera · <kbd>Enter</kbd> návrat na trať</td></tr>
+      <tr><td>Soupeři</td><td>volba „Soupeři: Lehcí / Střední / Těžcí / Mistři“ ve výběru trati přidá 7 počítačových jezdců (sólo i pro dva). Každý jede jiným typem auta a vyniká v něčem jiném; tempo se přizpůsobí autu hráče. Startují v předních řadách – je potřeba je předjet.</td></tr>
+      <tr><td>Pravidla</td><td>vyhrává, kdo první dojede; soupeř pak má 30 s na dojetí. Při havárii nebo zničení auta hráč vypadává. Auta se mohou navzájem strkat.</td></tr>
+    </table>
+    <h3>Editor</h3>
+    <table class="keys">
+      <tr><td>Levé tlačítko</td><td>položit dílek (přepíše obsazené pole)</td></tr>
+      <tr><td>Pravé tlačítko + tah</td><td>natáčení pohledu všemi směry</td></tr>
+      <tr><td>Stisknuté kolečko + tah</td><td>posun pohledu (také W A S D / šipky), otáčení kolečkem = zoom k místu pod kurzorem</td></tr>
+      <tr><td>Billboard</td><td>po položení se zeptá na text; kliknutím na existující billboard text změníš</td></tr>
+      <tr><td>Zeď</td><td>sousední zdi se samy propojí (rovně, rohy, T i křížení) – ideální proti zkracování trati</td></tr>
+      <tr><td><kbd>R</kbd></td><td>otočit dílek</td></tr>
+      <tr><td><kbd>Q</kbd> / <kbd>E</kbd></td><td>snížit / zvýšit patro</td></tr>
+      <tr><td><kbd>X</kbd> nebo <kbd>Shift</kbd>+klik</td><td>guma</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>zpět / vpřed (také tlačítka ↶ a ↷ v horní liště)</td></tr>
+      <tr><td><kbd>F</kbd></td><td>vzít dílek pod kurzorem (typ, otočení, patro) jako aktuální nástroj</td></tr>
+      <tr><td><kbd>Delete</kbd></td><td>smazat dílek pod kurzorem</td></tr>
+    </table>
+    <p class="hint">Tip: na looping potřebuješ aspoň ~90 km/h, na skok přes mezeru ~110 km/h. Pozor – nárazy poškozují auto (boční méně, čelní víc), při 100 % je auto zničené. Čelní náraz ve vysoké rychlosti znamená okamžitý konec hry!</p>
+    <h3>Klopení v editoru</h3>
+    <p class="muted">Klopený úsek začni <b>nájezdem</b> (L = pro levé zatáčky, P = pro pravé), pokračuj klopenou rovinkou nebo zatáčkou a ukonči ho <b>sjezdem</b> stejné strany. Když klopení nenavazuje, editor ukáže chybu – zkus dílek otočit (R).</p>
+    <div class="row end"><button class="btn primary" data-go="back">OK</button></div>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div class="hud-top">
+    <div class="box"><div class="k">ČAS</div><div class="v" id="hTime">0:00.00</div></div>
+    <div class="box"><div class="k">KOLO</div><div class="v" id="hLap">1/1</div></div>
+    <div class="box"><div class="k">REKORD</div><div class="v" id="hBest">—</div></div>
+    <div class="box hidden" id="hPosBox"><div class="k">POZICE</div><div class="v" id="hPos">—</div></div>
+  </div>
+  <div class="progress"><div id="hProg"></div></div>
+  <canvas id="minimap" width="200" height="200"></canvas>
+  <div class="dmg"><div class="k">POŠKOZENÍ <b id="hDmgTxt">0 %</b></div>
+    <div class="dcar"><i id="zF"></i><i id="zL"></i><i class="body"></i><i id="zR"></i><i id="zB"></i></div>
+    <div class="dbar"><b id="hDmg"></b></div><div class="pw" id="hPow"></div></div>
+  <div class="gauge">
+    <canvas id="tacho" width="260" height="260"></canvas>
+    <div class="speed"><span id="hSpeed">0</span><small>km/h</small></div>
+    <div class="gear" id="hGear">1</div>
+  </div>
+  <div id="warn" class="hidden">⚠ VYNECHANÝ KONTROLNÍ BOD <small>vrať se po šipce na trať · <b id="warnDist">0 m</b></small></div>
+  <div id="msg"></div>
+  <div id="sub"></div>
+  <div class="camlabel" id="hCam"></div>
+  <!-- hra pro dva: rozdělená obrazovka, vlevo hráč 1, vpravo hráč 2 -->
+  <div id="duelHud" class="hidden">
+    <div class="dsplit"></div>
+    <div class="pl" id="pl0"><div class="pbar"><b class="nm">HRÁČ 1</b><span class="pos"></span><span class="lap"></span><span class="tm"></span><span class="sp"></span><span class="dm"></span></div><div class="pwarn hidden">⚠ VYNECHANÝ KONTROLNÍ BOD – zpět po šipce</div><div class="pmsg"></div><div class="keys">W A S D · mezerník = ruční brzda · C kamera · R návrat</div></div>
+    <div class="pl" id="pl1"><div class="pbar"><b class="nm">HRÁČ 2</b><span class="pos"></span><span class="lap"></span><span class="tm"></span><span class="sp"></span><span class="dm"></span></div><div class="pwarn hidden">⚠ VYNECHANÝ KONTROLNÍ BOD – zpět po šipce</div><div class="pmsg"></div><div class="keys">šipky · pravý Ctrl = ruční brzda · pravý Shift kamera · Enter návrat</div></div>
+  </div>
+  <div id="touch">
+    <div class="tpad left"><button data-k="ArrowLeft">◀</button><button data-k="ArrowRight">▶</button></div>
+    <div class="tpad right"><button data-k="Space" class="sm">⛐</button><button data-k="ArrowDown">▼</button><button data-k="ArrowUp" class="gas">▲</button></div>
+    <div class="tpad top"><button data-k="KeyC" class="sm">🎥</button><button data-k="KeyR" class="sm">↺</button><button data-k="Escape" class="sm">❚❚</button></div>
+  </div>
+</div>
+
+<!-- pauza -->
+<div id="pause" class="screen panelscreen">
+  <div class="panel small">
+    <h2>Pauza</h2>
+    <button class="btn primary" id="resumeBtn">Pokračovat</button>
+    <button class="btn" id="restartBtn">Restart</button>
+    <button class="btn" id="pauseEditorBtn">Zpět do editoru</button>
+    <button class="btn" id="pauseMenuBtn">Hlavní menu</button>
+  </div>
+</div>
+
+<!-- výsledky -->
+<div id="results" class="screen panelscreen">
+  <div class="panel small">
+    <h2 id="resTitle">Cíl!</h2>
+    <div class="bigtime" id="resTime">0:00.00</div>
+    <div id="resBadge" class="badge">NOVÝ REKORD</div>
+    <div id="resLaps" class="laps"></div>
+    <div id="resBest" class="muted"></div>
+    <button class="btn primary" id="replayBtn">🎬 Přehrát záznam</button>
+    <button class="btn" id="againBtn">Jet znovu</button>
+    <button class="btn" id="resEditorBtn">Zpět do editoru</button>
+    <button class="btn" id="resMenuBtn">Hlavní menu</button>
+  </div>
+</div>
+
+<!-- přehrávání záznamu -->
+<div id="replayBar" class="hidden">
+  <button class="btn sm" id="rpPlay">⏸</button>
+  <button class="btn sm" id="rpRestart">⏮</button>
+  <input type="range" id="rpSeek" min="0" max="1000" value="0">
+  <div class="seg" id="rpSpeed"><button data-s="0.25">¼×</button><button data-s="0.5">½×</button><button data-s="1">1×</button><button data-s="2">2×</button></div>
+  <button class="btn sm" id="rpCam">🎥 Kamera</button>
+  <button class="btn sm" id="rpExit">✕ Konec</button>
+</div>
+
+<!-- editor -->
+<div id="editorUI" class="hidden">
+  <div class="ed-top">
+    <input id="edName" maxlength="32" value="Moje trať">
+    <button class="btn sm" id="edNew">Nová</button>
+    <button class="btn sm" id="edOpen">Otevřít</button>
+    <button class="btn sm" id="edSave">💾 Uložit</button>
+    <button class="btn sm" id="edExport">Export</button>
+    <button class="btn sm" id="edImport">Import</button>
+    <button class="btn sm" id="edUndo" title="Zpět (Ctrl+Z)" disabled aria-label="Zpět">↶</button>
+    <button class="btn sm" id="edRedo" title="Vpřed (Ctrl+Y)" disabled aria-label="Vpřed">↷</button>
+    <button class="btn sm" id="edCenter" title="Vystředit pohled na střed herní plochy (Home)" aria-label="Vystředit pohled">⌖</button>
+    <span class="grow"></span>
+    <button class="btn sm primary" id="edTest">▶ Vyzkoušet</button>
+    <button class="btn sm" id="edMenu">Menu</button>
+  </div>
+  <div class="ed-side">
+    <div id="edPalette"></div>
+    <div class="ed-group">Nástroje</div>
+    <div class="palette"><button class="pbtn" id="edErase"><span>🧽</span>Guma</button></div>
+    <div class="ed-ctrl">
+      <div>Otočení <button class="btn sm" id="edRot">⟳ R</button> <b id="edRotV">0°</b></div>
+      <div>Patro <button class="btn sm" id="edDown">− Q</button> <b id="edEV">0</b> <button class="btn sm" id="edUp">+ E</button></div>
+    </div>
+  </div>
+  <div class="ed-status" id="edStatus"></div>
+  <div class="ed-hint">LMB položit · RMB natáčení · stisk kolečka posun · kolečko zoom · R otočit · Q/E patro · F vzít dílek · Delete smazat · X guma · Home střed plochy</div>
+</div>
+
+<!-- dialog -->
+<div id="dialog" class="screen panelscreen">
+  <div class="panel">
+    <h2 id="dlgTitle"></h2>
+    <div id="dlgBody"></div>
+    <div class="row end" id="dlgBtns"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script type="module">
+  // Vždy načíst aktuální verzi: nejdřív obnovit mezipaměť všech skriptů a stylů, pak spustit hru.
+  const mods = ['main', 'defs', 'tracks', 'pieces', 'track', 'physics', 'car', 'world', 'materials', 'editor', 'ai', 'audio', 'store'];
+  await Promise.all([...mods.map(m => fetch(`js/${m}.js`, { cache: 'reload' })), fetch('css/style.css', { cache: 'reload' })]).catch(() => {});
+  document.getElementById('mainCss').href = 'css/style.css?t=' + Date.now();
+  await import('./js/main.js');
+</script>
+</body>
+</html>
