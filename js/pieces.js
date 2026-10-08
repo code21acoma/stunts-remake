@@ -285,22 +285,34 @@ function road(b, path, len, base, o = {}) {
 
 // ocelová svodidla po obou stranách silnice podél libovolné křivky: pás se dvěma vlnami (z obou stran, spodní
 // plech brání podjetí karoserie), pozinkované sloupky po ~4 m, odrazky (vpravo bílé, vlevo žluté) a betonová krajnice
-function guardRails(b, P, base) {
-  const X = RH + 0.55, o = { uvAcross: 1, uvAlong: 4, step: 1 };
+// gaps = úseky křivky [u0, u1] bez svodidel (průjezd bloků lisu, koleje přejezdu); svodidla sledují výšku silnice (vlny, hrboly)
+function guardRails(b, P, base, gaps = []) {
+  const X = RH + 0.55;
+  // úseky se svodidly = celá křivka bez mezer
+  const segs = []; let u = 0;
+  for (const [g0, g1] of gaps.slice().sort((a, c) => a[0] - c[0])) { if (g0 > u) segs.push([u, g0]); u = Math.max(u, g1); }
+  if (u < 1) segs.push([u, 1]);
+  const inGap = v => gaps.some(([g0, g1]) => v > g0 && v < g1);
   for (const s of [-1, 1]) {
     const x = s * X, prof = [[0, 0.52], [-0.08, 0.6], [0, 0.68], [-0.08, 0.76], [0, 0.84]].map(([dx, y]) => [x + s * dx, y]);
     const back = [[x + s * 0.02, 0.84], [x + s * 0.02, 0.12]];
-    for (const [a, c] of [[prof, back], [prof.slice().reverse(), back.slice().reverse()]]) {
-      b.sweep(P.f, P.len, base, a, 'metal', o);
-      b.sweep(P.f, P.len, base, c, 'metal', o);
+    const shoulder = s > 0 ? [[RH, -0.02], [RH + 0.5, -0.02]] : [[-RH - 0.5, -0.02], [-RH, -0.02]];   // krajnice
+    for (const [from, to] of segs) {
+      const o = { uvAcross: 1, uvAlong: 4, step: 1, from, to }, len = P.len * (to - from);
+      for (const [a, c] of [[prof, back], [prof.slice().reverse(), back.slice().reverse()]]) {
+        b.sweep(P.f, len, base, a, 'metal', o);
+        b.sweep(P.f, len, base, c, 'metal', o);
+      }
+      b.sweep(P.f, len, base, shoulder, 'concrete', o);
     }
-    b.sweep(P.f, P.len, base, s > 0 ? [[RH, -0.02], [RH + 0.5, -0.02]] : [[-RH - 0.5, -0.02], [-RH, -0.02]], 'concrete', o);   // krajnice
     const n = Math.max(2, Math.round(P.len / 4));
     for (let i = 0; i < n; i++) {
-      const f = frame(P.f, (i + 0.5) / n, base), yaw = Math.atan2(f.t.x, f.t.z);
+      const v = (i + 0.5) / n;
+      if (inGap(v)) continue;
+      const f = frame(P.f, v, base), yaw = Math.atan2(f.t.x, f.t.z);
       const at = d => f.p.clone().addScaledVector(f.r, s * d);
-      const p = at(X + 0.2); b.box('metal', 0.14, 0.9, 0.14, p.x, base + 0.45, p.z, yaw, false);
-      if (i % 2) { const q = at(X - 0.06); b.box(s > 0 ? 'lamp' : 'hazard', 0.04, 0.1, 0.18, q.x, base + 0.75, q.z, yaw, false); }
+      const p = at(X + 0.2); b.box('metal', 0.14, 0.9, 0.14, p.x, f.p.y + 0.45, p.z, yaw, false);
+      if (i % 2) { const q = at(X - 0.06); b.box(s > 0 ? 'lamp' : 'hazard', 0.04, 0.1, 0.18, q.x, f.p.y + 0.75, q.z, yaw, false); }
     }
   }
 }
@@ -643,13 +655,13 @@ export function buildPiece(tile, ctx = {}) {
       if (elevated) pillars(b, P.f, P.len, base);
       break;
     case 'obstacleC':
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       b.box('hazard', 3.2, 1.1, 1.6, 0, base + 0.55, 0);
       for (const z of [-1.6, 1.6]) b.cyl('hazard', 0.1, 0.28, 0.8, 0, base + 0.4, z, 10, false);
       break;
     case 'obstacleS':
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       for (const x of [-3.75, 3.75]) b.box('hazard', 2.6, 1.1, 1.6, x, base + 0.55, 0);
       break;
@@ -665,7 +677,11 @@ export function buildPiece(tile, ctx = {}) {
       for (const x of [-2.5, 2.5]) b.box('lamp', 0.3, 0.1, 1.2, x, top - 0.06, 0, 0, false);
       break;
     }
-    case 'straight': case 'curve': case 'bigcurve': case 'bumps': case 'sbendL': case 'sbendR':
+    case 'bumps':   // hrboly se svodidly (nedají se objet)
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
+      if (elevated) pillars(b, P.f, P.len, base);
+      break;
+    case 'straight': case 'curve': case 'bigcurve': case 'sbendL': case 'sbendR':
       road(b, P.f, P.len, base, { rails: elevated });
       if (elevated) pillars(b, P.f, P.len, base);
       break;
@@ -708,7 +724,7 @@ export function buildPiece(tile, ctx = {}) {
       break;
     }
     case 'chicane':
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       for (const [x0, x1, z] of CHICANE) {
         b.box('concrete', x1 - x0, 1.0, 1.2, (x0 + x1) / 2, base + 0.5, z);
@@ -716,17 +732,17 @@ export function buildPiece(tile, ctx = {}) {
       }
       break;
     case 'waves':
-      road(b, P.f, P.len, base, { rails: elevated, solid: !elevated, step: 0.5 });
+      road(b, P.f, P.len, base, { curbs: false, solid: !elevated, step: 0.5 }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       break;
     case 'crates':   // bedny jsou samostatné objekty (rozletí se) – přidává je Track; tady jen náhled v editoru
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       if (ctx.withCones) for (const [x, y, z] of CRATES) b.box('crate', CRATE, CRATE, CRATE, x, base + y, z, 0, false);
       break;
     case 'pendulum': {
       // portál s koulí na řetězu; koule a řetěz se hýbou (Track), tady jen konstrukce
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       const top = base + PENDULUM.pivotY;
       for (const x of [-7.6, 7.6]) {
@@ -744,7 +760,7 @@ export function buildPiece(tile, ctx = {}) {
     }
     case 'wind': {
       // tři obří ventilátory na straně +x foukají přes silnici k −x; lopatky se točí (Track)
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       for (const z of [-12, 0, 12]) {
         const ring = new THREE.TorusGeometry(2.7, 0.35, 10, 32).rotateY(Math.PI / 2); ring.translate(WIND.fanX, base + 3.2, z);
@@ -760,7 +776,7 @@ export function buildPiece(tile, ctx = {}) {
       break;
     }
     case 'oil':
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       for (const [x, z, r] of OIL) { const g = new THREE.CircleGeometry(r * 1.12, 28).rotateX(-Math.PI / 2); g.scale(1, 1, 1.25); g.translate(x, base + 0.025, z); b.add('oil', g, false); }
       // sud, ze kterého olej vytekl
@@ -787,7 +803,7 @@ export function buildPiece(tile, ctx = {}) {
       break;
     }
     case 'trampoline': {
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       const { hx, z0, z1 } = TRAMPOLINE;
       const mat = new THREE.PlaneGeometry(2 * hx, z1 - z0).rotateX(-Math.PI / 2); mat.translate(0, base + 0.04, (z0 + z1) / 2);
@@ -799,7 +815,7 @@ export function buildPiece(tile, ctx = {}) {
     }
     case 'crusher': {
       // lis: kryty po stranách, vodicí kolejnice v silnici, výstražné pruhy; bloky se hýbou (Track)
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base, [[(20 - CRUSHER.hz - 1) / 40, (20 + CRUSHER.hz + 1) / 40]]);   // mezera pro bloky lisu
       if (elevated) pillars(b, P.f, P.len, base);
       const { hx, hy, hz, open } = CRUSHER;
       for (const s of [-1, 1]) {
@@ -815,7 +831,7 @@ export function buildPiece(tile, ctx = {}) {
     }
     case 'spinner': {
       // rotující rameno: sloup uprostřed silnice (kolize) s motorem; rameno se točí (Track)
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       b.cyl('concrete', SPINNER.post + 0.4, SPINNER.post + 0.6, 0.35, 0, base + 0.17, 0, 20);
       b.cyl('steel', SPINNER.post, SPINNER.post, SPINNER.y + 0.9, 0, base + (SPINNER.y + 0.9) / 2, 0, 16);
@@ -827,7 +843,7 @@ export function buildPiece(tile, ctx = {}) {
     }
     case 'hammer': {
       // buchary: portál s válci, hlavy dopadají (Track); na silnici otisky dopadu
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       const top = base + HAMMER.top + 2 * HAMMER.hy + 2.2;
       for (const x of [-7.4, 7.4]) { b.box('steel', 1, top - base, 1.4, x, (base + top) / 2, 0); b.box('hazard', 1.1, 1.2, 1.5, x, base + 0.6, 0); }
@@ -842,7 +858,7 @@ export function buildPiece(tile, ctx = {}) {
     }
     case 'railroad': {
       // přejezd: koleje napříč, pražce, kůlny (vlak z nich vyjíždí), výstražné kříže; vlak, závory a světla hýbe Track
-      road(b, P.f, P.len, base, { rails: false });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base, [[(20 - 3.2) / 40, (20 + 3.2) / 40]]);   // mezera pro vlak
       for (const z of [-0.72, 0.72]) b.box('metal', 40, 0.14, 0.12, 0, base + 0.07, z, 0, false);
       for (let x = -19; x <= 19; x += 1.2) if (Math.abs(x) > 5.6) b.box('bark', 0.25, 0.12, 2.4, x, 0.06, 0, 0, false);
       const plank = new THREE.PlaneGeometry(10, 2.6).rotateX(-Math.PI / 2); plank.translate(0, base + 0.03, 0); b.add('dark', plank, false);
@@ -864,7 +880,7 @@ export function buildPiece(tile, ctx = {}) {
       break;
     }
     case 'bollards': {
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       for (const z of BOLLARDS.rows) for (const x of BOLLARDS.xs) {
         const h = new THREE.CircleGeometry(BOLLARDS.r + 0.12, 16).rotateX(-Math.PI / 2); h.translate(x, base + 0.02, z); b.add('dark', h, false);
@@ -1018,7 +1034,7 @@ export function buildPiece(tile, ctx = {}) {
       }
       break;
     case 'cones':   // slalom: kužely jsou samostatné (dají se porazit) – přidává je Track; tady jen pro náhled v editoru
-      road(b, P.f, P.len, base, { rails: elevated });
+      road(b, P.f, P.len, base, { curbs: false }); guardRails(b, P, base);
       if (elevated) pillars(b, P.f, P.len, base);
       if (ctx.withCones) for (const [x, z] of CONES) b.cyl('hazard', 0.06, 0.34, 0.8, x, base + 0.4, z, 12, false);
       break;

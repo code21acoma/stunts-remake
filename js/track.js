@@ -5,12 +5,13 @@ import { T, H, GRID, PIECES, DELTA, LOOPS, PENDULUM, WIND, OIL, TRAMPOLINE, CRUS
 
 // tunelové dílky – na sebe navazující tunely nemají mezi sebou portál
 const TUNNELS = { tunnel: 1, tunnelCurve: 1, tunnelBig: 1, tunnelBridge: 1, tunnelPortal: 1 };
-import { buildPiece, finalizePiece, PATHS, pathOf, frame, ROAD_LIFT, CONES, BOOST_PAD, CRATES, CRATE } from './pieces.js';
+import { buildPiece, finalizePiece, PATHS, pathOf, frame, ROAD_LIFT, CONES, BOOST_PAD, CRATES, CRATE, PIPE_R } from './pieces.js';
 
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 export const HALF_MAP = GRID * T / 2;
+export const FENCE = HALF_MAP + 28;   // plot kolem mapy (world.js ho kreslí, physics.js o něj auto zastaví)
 export const cellCenter = (x, y) => new THREE.Vector3((x - GRID / 2 + 0.5) * T, 0, (y - GRID / 2 + 0.5) * T);
 export const worldToCell = (px, pz) => [Math.floor(px / T + GRID / 2), Math.floor(pz / T + GRID / 2)];
 
@@ -520,8 +521,11 @@ export class Track {
       return busy(at(dist) - 0.15) || busy(at(dist)) || busy(at(dist) + 0.2) || busy(at(dist) + 0.4) ? dist - 5 : null;
     }
     if (h.kind === 'crusher') {
-      const shut = tt => crusherX(tt, h.ph) - CRUSHER.hx < 2.4;
-      return shut(at(dist)) || shut(at(dist) + 0.5) || shut(at(dist) - 0.3) ? dist - 4.5 : null;
+      // lis musí být otevřený po celou dobu, kdy je auto pod bloky (od vjezdu přídě po výjezd zádě, s rezervou)
+      const shut = tt => crusherX(tt, h.ph) - CRUSHER.hx < 2.4, zone = CRUSHER.hz + 2.6;
+      const t0 = at(dist - zone) - 0.3, t1 = at(dist + zone) + 0.3;
+      for (let tt = t0; tt <= t1; tt += 0.08) if (shut(tt)) return dist - 4.5;
+      return null;
     }
     if (h.kind === 'spinner') {
       // průjezd vedle sloupu (soupeř jede ~3,3 m od středu): projde rameno autem v některém okamžiku průjezdu?
@@ -661,7 +665,9 @@ export class Track {
 
   // Jede auto po vozovce dílku? Nejbližší bod středové křivky: vodorovně do 7,5 m a výškově do 2,5 m,
   // nebo celkem do 4 m (looping, roura, klopení). Body křivek se ukládají pro každý dílek.
-  onTilePath(t, p) {
+  // air = true: auto letí – stačí být vodorovně nad silnicí dílku a výš než ona (do 15 m), ne pod ní
+  // air = 'inside': roura / looping – stačí být uvnitř (blízko středové křivky, i na stěně či stropě)
+  onTilePath(t, p, air = false) {
     if (!PATHS[t.type]) return true;
     let pts = this._pp.get(t);
     if (!pts) {
@@ -675,6 +681,12 @@ export class Track {
     }
     for (const q of pts) {
       const dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z, h2 = dx * dx + dz * dz;
+      if (air === 'inside') {
+        if (t.type === 'loop') { if (h2 + dy * dy < 16) return true; }                                   // na vozovce smyčky (i vzhůru nohama)
+        else { const da = dy - PIPE_R; if (h2 + da * da < (PIPE_R + 1.5) ** 2) return true; }             // uvnitř trubky (od osy)
+        continue;
+      }
+      if (air) { if (h2 < 56 && dy > -2.5 && dy < 15) return true; continue; }
       if ((h2 < 56 && Math.abs(dy) < 2.5) || h2 + dy * dy < 16) return true;
     }
     return false;

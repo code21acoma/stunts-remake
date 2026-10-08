@@ -7,15 +7,21 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Exo+2:wght@400;600;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" id="mainCss" href="css/style.css">
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
-    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js"
-  }
-}
+<script>
+  // Mapa modulů: knihovny z CDN a vlastní skripty hry vždy čerstvé (?v=…). Některé prohlížeče (např. Brave)
+  // drží staré soubory v mezipaměti – po nahrání nové verze by se smíchaly staré a nové moduly a hra by nenaběhla.
+  (function () {
+    var v = Date.now().toString(36);
+    var imports = {
+      'three': 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js',
+      'three/addons/': 'https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/',
+      'three-mesh-bvh': 'https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js'
+    };
+    ['main', 'defs', 'tracks', 'pieces', 'track', 'physics', 'car', 'world', 'materials', 'editor', 'ai', 'audio', 'store']
+      .forEach(function (m) { imports['./js/' + m + '.js'] = './js/' + m + '.js?v=' + v; });
+    document.write('<link rel="stylesheet" id="mainCss" href="css/style.css?v=' + v + '">');
+    document.write('<script type="importmap">' + JSON.stringify({ imports: imports }) + '<\/script>');
+  })();
 </script>
 </head>
 <body>
@@ -129,6 +135,7 @@
     <div class="box"><div class="k">KOLO</div><div class="v" id="hLap">1/1</div></div>
     <div class="box"><div class="k">REKORD</div><div class="v" id="hBest">—</div></div>
     <div class="box hidden" id="hPosBox"><div class="k">POZICE</div><div class="v" id="hPos">—</div></div>
+    <div class="box" id="hDmgBox"><div class="k">POŠKOZENÍ</div><div class="v" id="hDmgMini">🔧 0 %</div></div>
   </div>
   <div class="progress"><div id="hProg"></div></div>
   <canvas id="minimap" width="200" height="200"></canvas>
@@ -232,12 +239,26 @@
 </div>
 
 <div id="toast"></div>
+<script>
+  // Když se hra nespustí (chybějící funkce prohlížeče, nedostupná knihovna…), ukázat chybu místo nekonečného kolečka.
+  window.__bootFail = function (e) {
+    var box = document.getElementById('loading');
+    if (!box || !box.classList.contains('show')) return;
+    var msg = String((e && (e.message || e.reason || e)) || 'neznámá chyba');
+    var sp = box.querySelector('.spinner'); if (sp) sp.style.display = 'none';
+    box.querySelector('p').innerHTML = 'Hru se nepodařilo spustit.<br><small style="display:block;max-width:90vw;margin:10px auto;color:#ffb4a8;word-break:break-word"></small>'
+      + '<small style="display:block;color:#9aa3ad;max-width:90vw;margin:0 auto;word-break:break-word">' + navigator.userAgent.replace(/</g, '') + '</small>';
+    box.querySelector('p small').textContent = msg;
+  };
+  window.addEventListener('error', function (ev) { window.__bootFail(ev.error || ev.message); });
+  window.addEventListener('unhandledrejection', function (ev) { window.__bootFail(ev.reason); });
+  setTimeout(function () { window.__bootFail('Načítání trvá příliš dlouho – zkontroluj připojení k internetu (knihovna Three.js se stahuje z cdn.jsdelivr.net).'); }, 20000);
+</script>
+<!-- záloha pro starší prohlížeče bez podpory importmap (v nových nic nedělá) -->
+<script async src="https://cdn.jsdelivr.net/npm/es-module-shims@1.10.1/dist/es-module-shims.js"></script>
 <script type="module">
-  // Vždy načíst aktuální verzi: nejdřív obnovit mezipaměť všech skriptů a stylů, pak spustit hru.
-  const mods = ['main', 'defs', 'tracks', 'pieces', 'track', 'physics', 'car', 'world', 'materials', 'editor', 'ai', 'audio', 'store'];
-  await Promise.all([...mods.map(m => fetch(`js/${m}.js`, { cache: 'reload' })), fetch('css/style.css', { cache: 'reload' })]).catch(() => {});
-  document.getElementById('mainCss').href = 'css/style.css?t=' + Date.now();
-  await import('./js/main.js');
+  // spustit hru (aktuální verze modulů zajišťuje mapa modulů v hlavičce)
+  try { await import('./js/main.js'); } catch (e) { window.__bootFail(e); }
 </script>
 </body>
 </html>

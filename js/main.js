@@ -53,8 +53,8 @@ const RIVALS = [
   { name: 'Veselý', margin: 0.08, car: 'buvol', trait: 'nováček', corner: 0.9, throttle: 0.95, brake: 9, lane: 1.1 },
 ];
 // nejvyšší rychlost (km/h) a zrychlení 0–100 km/h (s) aut – pro odhad ideálního času kola
-const TOP = { kapka: 124, buvol: 164, rally: 198, gt: 198, muscle: 214, blesk: 214, formule: 244 };
-const ACC = { kapka: 12.1, buvol: 6.4, rally: 4.4, gt: 6.8, muscle: 7.5, blesk: 5.8, formule: 5.4 };
+const TOP = { kapka: 124, buvol: 164, rally: 198, gt: 198, muscle: 214, blesk: 203, formule: 244 };
+const ACC = { kapka: 12.1, buvol: 6.4, rally: 4.4, gt: 6.8, muscle: 7.5, blesk: 4.2, formule: 5.4 };
 // oprava odhadu podle skutečných jízd autopilota (formule brzdí a zatáčí líp, těžká auta hůř)
 const EST = { kapka: 0.97, buvol: 1.12, rally: 1.0, gt: 0.96, muscle: 1.12, blesk: 0.98, formule: 0.905 };
 // obtížnost soupeřů (0 = bez soupeřů): pace = přídavek k cílovému času kola, corner/brake = odvaha v zatáčkách
@@ -701,6 +701,7 @@ function respawn(P = R.players[0]) {
   if (P.isAI) { P.ai.reset(car.pos); P.stuckT = 0; P.farT = 0; }
   else if (P.i === 0) R.ai?.reset(car.pos);
   if (!P.isAI) R.duelAI?.[P.i].reset(car.pos);
+  P.prevPos?.copy(car.pos); P.prevQuat?.copy(car.quat);   // po přenesení nedopočítávat let přes mapu
   for (let w = 0; w < 4; w++) world.skids.lift(w + P.i * 4);
   P.upsideT = P.waterT = 0;
   setMissed(P, false);
@@ -710,6 +711,44 @@ function respawn(P = R.players[0]) {
 // Kontrolní body = dílky trati v pořadí jízdy. Vynechat lze nejvýš 1 dílek (krátké vyjetí mimo trať);
 // větší zkratka se nezapočítá a hráč dostane upozornění se šipkou zpět ke kontrolnímu bodu.
 const MAX_SKIP = 1;
+// Poloha auta pro vykreslení: fyzika běží po 1/240 s, snímek se kreslí kdykoli mezi kroky – bez dopočtu by auto
+// cukalo (jednou 4, podruhé 5 kroků na snímek). Mezi stavem před a po posledním kroku se plynule dopočítá.
+function renderPose(P) {
+  const car = P.car;
+  if (!P.prevPos || P.done === 'out') return { pos: car.pos, quat: car.quat };
+  const a = Math.max(0, Math.min(1, R.acc / STEP));
+  P.rPos ||= new THREE.Vector3(); P.rQuat ||= new THREE.Quaternion();
+  P.rPos.lerpVectors(P.prevPos, car.pos, a);
+  P.rQuat.slerpQuaternions(P.prevQuat, car.quat, a);
+  return { pos: P.rPos, quat: P.rQuat };
+}
+
+// motory ostatních aut pro zvuk: nejbližší tři ke kameře hráče, stereo podle polohy vůči kameře,
+// Dopplerův jev podle rychlosti přibližování (zvuk 343 m/s)
+const _ne = new THREE.Vector3(), _nr = new THREE.Vector3(), _nv = new THREE.Vector3();
+function nearbyEngines(me, cam) {
+  _nr.set(1, 0, 0).applyQuaternion(cam.quaternion);
+  const list = [];
+  for (const Q of R.all) {
+    if (Q === me || Q.done === 'out' || !Q.car) continue;
+    _ne.subVectors(Q.car.pos, cam.position);
+    const dist = _ne.length();
+    if (dist > 90) continue;
+    _ne.divideScalar(dist || 1);
+    const approach = -_nv.subVectors(Q.car.vel, me.car.vel).dot(_ne);
+    list.push({ spec: Q.car.spec, rpm: Q.car.rpm, throttle: Q.car.throttle || 0, dist, pan: _ne.dot(_nr) * 0.9,
+      doppler: THREE.MathUtils.clamp(343 / (343 - approach), 0.8, 1.25) });
+  }
+  return list.sort((a, b) => a.dist - b.dist).slice(0, 3);
+}
+
+// stojí auto na vozovce koly na obou stranách? (kolo na trávě = kontakt se zemí, ne s dílkem)
+function bothSidesOnRoad(car) {
+  let left = false, right = false;
+  for (const w of car.wheels) if (w.contact && !w.ground) { if (w.local.x > 0) left = true; else right = true; }
+  return left && right;
+}
+
 function progress(P) {
   const { track } = R, car = P.car;
   if (!R.closed || R.phase !== 'racing' || P.done) return;
@@ -717,13 +756,18 @@ function progress(P) {
   // Dílek se počítá, jen když auto opravdu jede po jeho vozovce (i výškově – pod mostem se most nepočítá);
   // ve vzduchu se nevyhodnocuje. Varování o zkratce až po 0,4 s, aby ho nespustil jeden okamžik (např. odraz
   // ze skokánku nad sousední silnicí). Na startovním roštu za čarou (konec kola, ještě bez bodu) se nehlásí.
+  // Průjezd se uzná, jen když má auto aspoň v některé části dílku kola na obou stranách na vozovce (ne jedním bokem
+  // na trávě). Výjimka – let: přeletěný dílek (skok, trampolína) se uzná bez dotyku, je-li na řadě a auto letí nad jeho silnicí.
   const t = track.tileAt(car.pos.x, car.pos.z);
   let skip = false;
-  if (t && car.onGround && track.onTilePath(t, car.pos)) {
+  // V rouře a loopingu stačí jet uvnitř (kola mohou být kdekoli na stěně, auto může i přeskočit).
+  const inside = t && LOOPS[t.type];
+  const air = !car.onGround && !inside;
+  if (t && (inside ? track.onTilePath(t, car.pos, 'inside') : air ? track.onTilePath(t, car.pos, true) : bothSidesOnRoad(car) && track.onTilePath(t, car.pos))) {
     const idx = track.orderIndex.get(t) || [];
-    const i = idx.find(i => i > P.reached && i <= P.reached + 1 + MAX_SKIP);
+    const i = air ? idx.find(i => i === P.reached + 1) : idx.find(i => i > P.reached && i <= P.reached + 1 + MAX_SKIP);
     if (i !== undefined) { P.reached = i; P.lastCp = i; P.missT = 0; if (P.missed) setMissed(P, false); }
-    else skip = idx.length > 0 && idx.every(i => i > P.reached + 1 + MAX_SKIP) && !(P.reached === 0 && idx.every(i => i >= n - 3));
+    else if (!air) skip = idx.length > 0 && idx.every(i => i > P.reached + 1 + MAX_SKIP) && !(P.reached === 0 && idx.every(i => i >= n - 3));
   }
   P.missT = skip ? (P.missT || 0) + STEP : 0;
   if (P.missT > 0.4) setMissed(P, true);
@@ -957,7 +1001,7 @@ function crashFx(dt, car) {
 function updateRace(dt) {
   const { track } = R, PL = R.players, ALL = R.all;
   if (msgTimer > 0) { msgTimer -= dt; if (msgTimer <= 0) message(''); }
-  if (R.paused) { audio.update(PL[0].car, false); return; }
+  if (R.paused) { audio.update(PL[0].car, false); audio.updateOthers([]); return; }
 
   const hold = { steer: 0, throttle: 0, brake: 0.6, handbrake: false, hold: true };
   const traffic = ALL.filter(P => P.done !== 'out').map(P => P.car);
@@ -994,6 +1038,8 @@ function updateRace(dt) {
   R.acc += Math.min(dt, 1 / 20);
   while (R.acc >= STEP) {
     track.animate(R.time);   // demoliční koule, ventilátory, poryvy větru
+    // stav před krokem – pro plynulé vykreslení mezi kroky fyziky (viz renderPose)
+    for (const P of active) { (P.prevPos ||= new THREE.Vector3()).copy(P.car.pos); (P.prevQuat ||= new THREE.Quaternion()).copy(P.car.quat); }
     active.forEach(P => P.car.step(STEP, inputs[ALL.indexOf(P)], track));
     if (track.hazards.length) for (const P of active) {
       const h = track.hazardHit(P.car, P.isAI ? 0.5 : 1);
@@ -1057,8 +1103,9 @@ function updateRace(dt) {
     if (!P.isAI) updateMissed(P, dt);
     else if (R.phase === 'racing' && !P.done) paceRival(P);
     damageSmoke(dt, car, car.pos, car.quat);
-    model.root.position.copy(car.pos);
-    model.root.quaternion.copy(car.quat);
+    const pose = renderPose(P);
+    model.root.position.copy(pose.pos);
+    model.root.quaternion.copy(pose.quat);
     model.update(car);
     effects(dt, car, car.wheels, P.i * 4);
     if (P.msgT > 0) { P.msgT -= dt; if (P.msgT <= 0) $('pl' + P.i).querySelector('.pmsg').classList.remove('show'); }
@@ -1077,10 +1124,13 @@ function updateRace(dt) {
       P.cockpit.spin.rotation.z = -P.car.steer * 3.2;   // volant podle natočení kol
       if (CAMS[P.camMode] === 'cockpit') P.cockpit.update({ kmh: Math.abs(P.car.fwdSpeed) * 3.6, rpm: P.car.rpm, gear: P.car.gear, damage: P.car.damage });
     }
-    updateCamera(dt, P.car.pos, P.car.quat, CAMS[P.camMode], R.tvCams, P.car.speed, P.cam, P.cs, P);
+    const pose = renderPose(P);
+    updateCamera(dt, pose.pos, pose.quat, CAMS[P.camMode], R.tvCams, P.car.speed, P.cam, P.cs, P);
   }
   if (!R.duel) world.focusShadow(PL[0].car.pos);
+  audio.setInterior(CAMS[PL[0].camMode] === 'cockpit');
   audio.update(PL[0].car, true);
+  audio.updateOthers(nearbyEngines(PL[0], PL[0].cam || world.camera));
   if (R.duel) updateDuelHud(); else updateHud(PL[0].car);
 }
 
@@ -1244,6 +1294,9 @@ function updateHud(car) {
     if (P.hudDmg != null && dm > P.hudDmg) { const el = document.querySelector('.dmg'); el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit'); }
     P.hudDmg = dm;
     $('hDmgTxt').textContent = dm + ' %';
+    // mobil: poškození jako údaj v horní liště, barva od zelené po červenou (jako ve hře pro dva)
+    $('hDmgMini').textContent = '🔧 ' + dm + ' %';
+    $('hDmgMini').style.color = `hsl(${Math.max(0, 120 - dm * 1.2)}, 75%, 60%)`;
     $('hPow').textContent = dm > 0 ? `Výkon ${Math.round((car.powerFactor ?? 1) * 100)} % · max. rychlost ${Math.round((car.speedFactor ?? 1) * 100)} %` : '';
     $('hDmg').style.width = dm + '%'; $('hDmg').style.background = col(dm);
     $('zF').style.background = col(car.zones.front); $('zB').style.background = col(car.zones.rear);
@@ -1419,7 +1472,9 @@ function updateReplay(dt) {
   updateCamera(dt, model.root.position, model.root.quaternion, RP.cam, R.tvCams, Math.abs(f[8]));
   world.focusShadow(model.root.position);
   Object.assign(fakeCar, { rpm: f[9], throttle: f[10], skid: f[12], speed: Math.abs(f[8]), onGround: !!f[13] });
+  audio.setInterior(RP.cam === 'cockpit');
   audio.update(fakeCar, RP.playing && RP.speed >= 0.5);
+  audio.updateOthers([]);
 }
 
 // ------------------------------------------------------------ hlavní smyčka
@@ -1439,8 +1494,8 @@ function loop(now) {
     }
     if (mode === 'race' && R) updateRace(dt);
     else if (mode === 'replay' && RP) updateReplay(dt);
-    else if (mode === 'editor') { editor.update(dt, keys); audio.update(null, false); }
-    else { if (demo && backdrop) updateDemo(dt); else menuCamera(dt); audio.update(null, false); }
+    else if (mode === 'editor') { editor.update(dt, keys); audio.update(null, false); audio.setInterior(false); }
+    else { if (demo && backdrop) updateDemo(dt); else menuCamera(dt); audio.update(null, false); audio.setInterior(false); }
   } catch (err) { console.error(err); }
   world.render(dt);
   requestAnimationFrame(loop);

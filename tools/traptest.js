@@ -22,7 +22,7 @@ export function run(cars = ['gt'], data = trapTrack(), secs = 70) {
     const car = new Vehicle(CARS[cid]); const pose = track.startPose(); car.reset(pose.p, pose.t);
     const ai = new Autopilot(track); ai.reset(car.pos);
     const order = track.analysis.order, hits = [];
-    let t = 0, laps = 0, reached = 0, waited = 0;
+    let t = 0, laps = 0, reached = 0, waited = 0, stuck = 0, resp = 0;
     for (let s = 0; s < 240 * secs; s++) {
       const inp = ai.input(car); track.animate(t); car.step(1 / 240, inp, track); const h = track.hazardHit(car); t += 1 / 240;
       if (ai.waiting) waited += 1 / 240;
@@ -31,8 +31,14 @@ export function run(cars = ['gt'], data = trapTrack(), secs = 70) {
       if (i !== undefined) reached = i;
       if (reached >= order.length - 2 && tile === order[0].tile) { laps++; reached = 0; }
       if (h) hits.push(`${t.toFixed(1)}:${tile && tile.type}:${h.toFixed(0)}`);
+      // jako ve hře: soupeř, který 4 s stojí (čekání před pastí se počítá pomaleji), se vrátí na trať
+      stuck = car.speed < 1.5 ? stuck + (ai.waiting ? 0.25 : 1) / 240 : 0;
+      if (stuck > 4) {
+        const o = order[reached], p = track.poseOn(o.tile, o.fwd, 0.15, o.k || 0);
+        car.reset(p.p, p.t); ai.reset(car.pos); stuck = 0; resp++;
+      }
     }
     track.dispose();
-    return `${cid}: kola ${laps} poškození ${car.damage.toFixed(0)} čekání ${waited.toFixed(1)} s | ${hits.join(' ')}`;
+    return `${cid}: kola ${laps} poškození ${car.damage.toFixed(0)} čekání ${waited.toFixed(1)} s návraty ${resp} | ${hits.join(' ')}`;
   }).join('\n');
 }

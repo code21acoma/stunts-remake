@@ -138,14 +138,43 @@ kbd { background: #2b3446; border: 1px solid #45516a; border-bottom-width: 3px; 
   #touch { display: block; }
   #touch .tpad { position: absolute; display: flex; gap: 12px; pointer-events: auto; }
   #touch .left { left: 16px; bottom: 20px; }
+  /* vpravo v jedné řadě: ruční brzda (mezi šipkou doprava a brzdou/zpátečkou), brzda, plyn */
   #touch .right { right: 16px; bottom: 20px; align-items: flex-end; }
+  #touch .right [data-k="Space"] { margin-right: 6px; margin-bottom: 9px; }
   #touch .top { right: 16px; top: 90px; flex-direction: column; }
   #touch button { width: 76px; height: 76px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); background: rgba(10, 14, 20, 0.45); color: #fff; font-size: 26px; touch-action: none; user-select: none; -webkit-user-select: none; }
   #touch button.gas { width: 92px; height: 92px; background: rgba(255, 74, 46, 0.45); }
   #touch button.sm { width: 52px; height: 52px; font-size: 18px; }
   #touch button.on { background: rgba(255, 197, 61, 0.6); }
-  #hud #minimap { display: none; }
-  .gauge { bottom: 120px; transform: scale(0.6); transform-origin: right bottom; }
+}
+/* úzký telefon na výšku: menší tlačítka a mezery, aby se levá a pravá skupina nikdy nepřekrývaly */
+@media (pointer: coarse) and (max-width: 480px) {
+  #touch .tpad { gap: 8px; }
+  #touch .left { left: 10px; bottom: 14px; }
+  #touch .right { right: 10px; bottom: 14px; }
+  #touch button { width: 58px; height: 58px; font-size: 21px; }
+  #touch button.gas { width: 72px; height: 72px; }
+  #touch .right [data-k="Space"] { width: 46px; height: 46px; font-size: 17px; margin-right: 4px; margin-bottom: 6px; }
+}
+
+/* ---- mobil (dotykové zařízení): kompaktní HUD; na počítači beze změny ---- */
+#hDmgBox { display: none; }
+@media (pointer: coarse) {
+  #hud .camlabel { display: none; }                 /* bez poznámky o typu kamery */
+  #hud .dmg { display: none; }                      /* poškození jen jako údaj v horní liště (jako ve hře pro dva) */
+  #hud #hDmgBox { display: block; }
+  #hud .hud-top .box .v { white-space: nowrap; }
+  #hud .hud-top { top: 8px; gap: 6px; }
+  #hud .hud-top .box { min-width: 0; padding: 3px 8px; border-radius: 8px; }
+  #hud .hud-top .box .k { font-size: 9px; letter-spacing: 1px; }
+  #hud .hud-top .box .v { font-size: 16px; }
+  #hud .progress { top: 54px; width: min(250px, 66vw); }
+  /* tachometr na polovic pod časem závodu, vedle něj minimapa */
+  #hud .gauge { left: calc(50% - 128px); right: auto; top: 64px; bottom: auto; transform: scale(0.5); transform-origin: left top; }
+  #hud #minimap { display: block; left: calc(50% + 8px); right: auto; top: 64px; bottom: auto; width: 120px; height: 120px; transform: none; }
+  /* kamera, návrat na trať, pauza – menší ikony */
+  #touch .top { top: 64px; right: 8px; gap: 8px; }
+  #touch .top button.sm { width: 38px; height: 38px; font-size: 15px; }
 }
 
 @media (max-width: 720px) {

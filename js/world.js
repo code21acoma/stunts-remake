@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { makeMaterials } from './materials.js';
-import { HALF_MAP } from './track.js';
+import { HALF_MAP, FENCE } from './track.js';
 
 function valueNoise(seed = 1) {
   const p = new Uint8Array(512);
@@ -143,7 +143,7 @@ export class World {
     this.scene.add(cones, trunks);
     // plot kolem mapy
     const fenceMat = new THREE.MeshStandardMaterial({ color: 0x8a8f96, metalness: 0.6, roughness: 0.4 });
-    const L = HALF_MAP + 28;
+    const L = FENCE;
     const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.1, 2.2, 6), fenceMat, Math.ceil(8 * L / 8) + 8);
     let k = 0; const m = new THREE.Matrix4();
     for (let s = -L; s <= L; s += 8) for (const [x, z] of [[s, -L], [s, L], [-L, s], [L, s]]) { if (k < posts.count) posts.setMatrixAt(k++, m.makeTranslation(x, 1.1, z)); }

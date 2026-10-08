@@ -2,7 +2,7 @@
 // model pneumatiky se skluzovým úhlem a kruhem tření, motor s momentovou křivkou a automatem,
 // aerodynamický odpor + přítlak, kolize karoserie impulsy s třením.
 import * as THREE from 'three';
-import { HALF_MAP } from './track.js';
+import { FENCE } from './track.js';
 import { TRAMPOLINE } from './defs.js';
 const _wind = new THREE.Vector3();
 
@@ -49,7 +49,7 @@ export const CARS = {
   },
   blesk: {
     name: 'Blesk X1', desc: 'Hypersport s velkým výkonem a přítlakem. Rychlý, ale na formuli nestačí – a chce citlivou nohu.',
-    mass: 1320, torque: 480, redline: 8200, drive: 'awd', grip: 1.3, gears: [1.85, 1.55, 1.32, 1.14, 1.0, 0.88], final: 3.6,
+    mass: 1320, torque: 400, redline: 8200, drive: 'awd', grip: 1.3, gears: [3.5, 2.4, 1.8, 1.42, 1.17, 1.0, 0.88], final: 3.6,   // 7 stupňů, jednička do ~80 km/h
     steer: 0.55, brake: 14500, downforce: 3.2, stats: { speed: 4, accel: 4, grip: 4 },
     dims: { len: 4.55, width: 2.0, height: 1.12, wheelR: 0.35, wb: 2.7, track: 0.86, clear: 0.12 },
     look: { style: 'hyper', base: 0x7a2cff, accent: 0x111111, accent2: 0x39ffcf, livery: 'hyper', number: '1' },
@@ -236,7 +236,7 @@ export class Vehicle {
         continue;
       }
       contacts++;
-      w.contact = true; w.ground = hit.ground;
+      w.contact = true; w.ground = hit.ground; w.surf = hit.surf || null;   // povrch pro zvuk (tráva, šotolina, olej)
       w.comp = REST + WHEEL_R - hit.dist;
       w.point.copy(hit.point); w.normal.copy(hit.normal);
       // tráva: silniční auta kloužou, terénní méně; šotolina (štěrková silnice) je něco mezi
@@ -371,10 +371,16 @@ export class Vehicle {
     // ---------- kolize karoserie
     this.collide(track, dt);
 
-    // hranice mapy
-    const lim = HALF_MAP + 30;
+    // hranice mapy: plot – auto se zastaví, jakmile se ho dotkne kterýkoli roh (ne až střed), a odrazí se
+    const f2 = _v4.set(0, 0, 1).applyQuaternion(this.quat), r2 = _v5.set(1, 0, 0).applyQuaternion(this.quat);
     for (const ax of ['x', 'z']) {
-      if (Math.abs(this.pos[ax]) > lim) { this.pos[ax] = Math.sign(this.pos[ax]) * lim; this.vel[ax] *= -0.3; }
+      const ext = Math.abs(f2[ax]) * this.d.hl + Math.abs(r2[ax]) * this.d.hw;   // dosah karoserie v ose
+      const lim = FENCE - 0.25 - ext;
+      if (Math.abs(this.pos[ax]) > lim) {
+        const s = Math.sign(this.pos[ax]);
+        this.pos[ax] = s * lim;
+        if (this.vel[ax] * s > 0) { this.impact = Math.max(this.impact, Math.abs(this.vel[ax])); this.vel[ax] *= -0.3; this.vel.multiplyScalar(0.85); }
+      }
     }
   }
 

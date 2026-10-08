@@ -39,12 +39,7 @@
     {"type": "waves", "x": 10, "y": 37, "rot": 2, "e": 0},
     {"type": "bigcurveRails", "x": 10, "y": 38, "rot": 0, "e": 0},
     {"type": "straight", "x": 12, "y": 39, "rot": 1, "e": 0},
-    {"type": "straight", "x": 13, "y": 39, "rot": 1, "e": 0},
-    {"type": "straight", "x": 14, "y": 39, "rot": 1, "e": 0},
-    {"type": "straight", "x": 15, "y": 39, "rot": 1, "e": 0},
-    {"type": "straight", "x": 16, "y": 39, "rot": 1, "e": 0},
     {"type": "straight", "x": 18, "y": 39, "rot": 1, "e": 0},
-    {"type": "straight", "x": 19, "y": 39, "rot": 1, "e": 0},
     {"type": "straight", "x": 20, "y": 39, "rot": 1, "e": 0},
     {"type": "straight", "x": 23, "y": 39, "rot": 1, "e": 0},
     {"type": "straight", "x": 22, "y": 39, "rot": 1, "e": 0},
@@ -168,6 +163,11 @@
     {"type": "straight", "x": 37, "y": 39, "rot": 3, "e": 0},
     {"type": "tunnelPortal", "x": 0, "y": 19, "rot": 2, "e": 0},
     {"type": "ramp", "x": 0, "y": 8, "rot": 0, "e": 0},
-    {"type": "ramp", "x": 0, "y": 9, "rot": 2, "e": 0}
+    {"type": "ramp", "x": 0, "y": 9, "rot": 2, "e": 0},
+    {"type": "pendulum", "x": 15, "y": 39, "rot": 1, "e": 0},
+    {"type": "waves", "x": 14, "y": 39, "rot": 1, "e": 0},
+    {"type": "boost", "x": 13, "y": 39, "rot": 1, "e": 0},
+    {"type": "trampoline", "x": 19, "y": 39, "rot": 1, "e": 0},
+    {"type": "spinner", "x": 16, "y": 39, "rot": 1, "e": 0}
   ]
 }

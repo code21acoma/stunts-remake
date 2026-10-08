@@ -40,7 +40,7 @@ export class Autopilot {
           // objížďka zátarasů (lokální souřadnice dílku)
           const z = -20 + 40 * u;
           const K = o.tile.type === 'slalom' ? [[-24, 0], [-10, -2.2], [0, 2.2], [10, -2.2], [24, 0]]
-            : o.tile.type === 'cones' ? [[-30, 0], [-14, 3.6], [-2, -3.6], [10, 3.6], [30, 0]] : o.tile.type === 'spinner' ? [[-30, 0], [-11, SPINNER.lane], [11, SPINNER.lane], [30, 0]] : [[-30, 0], [-9, 3.3], [9, 3.3], [30, 0]];
+            : o.tile.type === 'cones' ? [[-32, 0], [-12, 2.4], [0, -2.4], [12, 2.4], [32, 0]] : o.tile.type === 'spinner' ? [[-30, 0], [-11, SPINNER.lane], [11, SPINNER.lane], [30, 0]] : [[-30, 0], [-9, 3.3], [9, 3.3], [30, 0]];
           let k = 0; while (k < K.length - 2 && z > K[k + 1][0]) k++;
           const f = (z - K[k][0]) / (K[k + 1][0] - K[k][0]);
           // rotující rameno se objíždí po straně, kde se točí po směru jízdy (lokálně −x při jízdě k +z, +x obráceně)

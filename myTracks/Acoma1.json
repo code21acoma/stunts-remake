@@ -34,7 +34,6 @@
     {"type": "straight", "x": 16, "y": 26, "rot": 1, "e": 0},
     {"type": "straight", "x": 15, "y": 26, "rot": 1, "e": 0},
     {"type": "straight", "x": 14, "y": 26, "rot": 1, "e": 0},
-    {"type": "billboard", "x": 12, "y": 25, "rot": 1, "e": 0, "text": "Ahoj Marečku a Máťo"},
     {"type": "straight", "x": 8, "y": 26, "rot": 1, "e": 0},
     {"type": "bigcurve", "x": 7, "y": 26, "rot": 1, "e": 0},
     {"type": "bigcurve", "x": 6, "y": 29, "rot": 0, "e": 0},
@@ -90,6 +89,7 @@
     {"type": "tunnelPortal", "x": 11, "y": 27, "rot": 2, "e": 0},
     {"type": "curve", "x": 11, "y": 28, "rot": 0, "e": 0},
     {"type": "straight", "x": 12, "y": 28, "rot": 1, "e": 0},
-    {"type": "straight", "x": 23, "y": 18, "rot": 0, "e": 0}
+    {"type": "straight", "x": 23, "y": 18, "rot": 0, "e": 0},
+    {"type": "billboard", "x": 12, "y": 25, "rot": 1, "e": 0, "text": "Jedeme !!!"}
   ]
 }
