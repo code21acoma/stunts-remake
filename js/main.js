@@ -247,15 +247,53 @@ function menuNav(hit, gp) {
     else if (mode === 'help') showMenu();
   }
 }
-// vibrace ovladače (DualSense podporuje v Chrome/Edge); s = síla 0–1
-function rumble(pi, s, ms = 180) {
+// vibrace ovladače (DualSense/Xbox v Chrome/Edge přes vibrationActuator, ve Firefoxu hapticActuators).
+// s = síla 0–1 (silný motor), weak = slabý (rychlý) motor; náraz (soft = false) má přednost před průběžným chvěním.
+const rumbleBusy = [];
+function rumble(pi, s, ms = 180, weak = s * 0.7, soft = false) {
   const gp = getPads()[pi];
-  try { gp?.vibrationActuator?.playEffect?.('dual-rumble', { duration: ms, strongMagnitude: Math.min(1, s), weakMagnitude: Math.min(1, s * 0.7) })?.catch?.(() => {}); } catch { /* bez vibrací */ }
+  if (!gp) return;
+  const now = performance.now();
+  if (soft && now < (rumbleBusy[pi] || 0)) return;          // průběžné chvění nepřeruší ránu
+  if (!soft) rumbleBusy[pi] = now + ms;
+  s = Math.max(0, Math.min(1, s)); weak = Math.max(0, Math.min(1, weak));
+  try {
+    if (gp.vibrationActuator?.playEffect) gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: s, weakMagnitude: weak })?.catch?.(() => {});
+    else gp.hapticActuators?.[0]?.pulse?.(Math.max(s, weak), ms);
+  } catch { /* bez vibrací */ }
 }
+const canRumble = gp => !!(gp && (gp.vibrationActuator?.playEffect || gp.hapticActuators?.length));
+
+// průběžná haptická odezva hráče: dopad po skoku, povrch (tráva, šotolina, hrboly) a smyk
+function haptics(P, dt) {
+  const car = P.car;
+  if (P.isAI || !getPads()[P.i]) return;
+  if ((P.hAir || 0) > 0.25 && car.onGround) {                 // dopad – ráz podle délky letu
+    const a = Math.min(1.2, P.hAir);
+    rumble(P.i, 0.3 + a * 0.55, 120 + a * 140, 0.2 + a * 0.3);
+  }
+  P.hAir = car.onGround ? 0 : (P.hAir || 0) + dt;
+  P.hT = (P.hT || 0) - dt;
+  if (P.hT > 0 || !car.onGround) return;
+  let rough = 0;
+  for (const w of car.wheels) if (w.contact && (w.ground || w.surf === 'gravel')) rough++;
+  const tile = R.track.tileAt(car.pos.x, car.pos.z), bumpy = tile && (tile.type === 'bumps' || tile.type === 'waves') ? 0.5 : 0;
+  const sp = Math.min(1, car.speed / 25);
+  const surf = Math.max(rough / 4, bumpy) * sp;                 // hrubý povrch – chvění sílí s rychlostí
+  const slip = car.speed > 5 ? Math.max(0, car.skid - 0.45) * 0.55 : 0;   // smyk – jemné bzučení
+  if (surf > 0.05 || slip > 0.05) { rumble(P.i, surf * 0.35, 110, Math.max(surf * 0.45, slip), true); P.hT = 0.09; }
+}
+
 window.addEventListener('gamepadconnected', e => {
   const id = e.gamepad.id;
   const name = /dualsense|0ce6|0df2/i.test(id) ? 'PlayStation DualSense' : /054c|wireless controller/i.test(id) ? 'PlayStation' : id.replace(/\(.*\)/, '').trim();
-  toast(`🎮 Ovladač připojen: ${name}` + (e.gamepad.mapping === 'standard' ? '' : ' (nestandardní mapování – doporučen Chrome/Edge)'));
+  const vib = canRumble(e.gamepad);
+  toast(`🎮 Ovladač připojen: ${name}` + (e.gamepad.mapping === 'standard' ? '' : ' (nestandardní mapování – doporučen Chrome/Edge)')
+    + (vib ? ' · vibrace zapnuty' : ' · tento prohlížeč vibrace ovladače nepodporuje (zkus Chrome/Edge)'));
+  if (vib) setTimeout(() => {   // zkušební zavibrování, ať je hned poznat, že vibrace fungují
+    const gp = navigator.getGamepads()[e.gamepad.index];
+    try { gp?.vibrationActuator?.playEffect ? gp.vibrationActuator.playEffect('dual-rumble', { duration: 220, strongMagnitude: 0.5, weakMagnitude: 0.4 })?.catch?.(() => {}) : gp?.hapticActuators?.[0]?.pulse?.(0.5, 220); } catch { /* bez vibrací */ }
+  }, 50);
 });
 window.addEventListener('gamepaddisconnected', () => toast('🎮 Ovladač odpojen'));
 
@@ -1090,7 +1128,10 @@ function updateRace(dt) {
     }
     if (!P.isAI && P.done && P.done !== 'finish' && P.done !== 'timeout' && P.doneT < 3) { P.doneT += dt; crashFx(dt, car); }
     if (!P.isAI) {
-      if (car.impact > 6 && car.impact > P.lastImpact + 2) { audio.bang(car.impact / 8); P.shake = Math.min(1, car.impact / 20); rumble(P.i, car.impact / 20, 150); }
+      if (car.impact > 6 && car.impact > P.lastImpact + 2) { audio.bang(car.impact / 8); P.shake = Math.min(1, car.impact / 20); }
+      // vibrace při nárazu: citlivější než zvuk, síla i délka podle prudkosti rány
+      if (car.impact > 3 && car.impact > P.lastImpact + 1.5) rumble(P.i, 0.25 + car.impact / 16, 110 + Math.min(260, car.impact * 14), 0.2 + car.impact / 22);
+      haptics(P, dt);
       P.lastImpact = car.impact;
     }
     const model = P.i === 0 ? R.model : P.model;
